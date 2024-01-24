@@ -19,44 +19,91 @@ AccelStepper stepper3(AccelStepper::DRIVER, MOTOR3_STEP_PIN, MOTOR3_DIR_PIN);
 
 AccelStepper steppers[MOTOR_COUNT] = {stepper1, stepper2, stepper3};
 
-int direction = 1; // 1 for forward, -1 for backward
 unsigned long previousMillis = 0;
 const long interval = 500;
 
-void setup()
-{
+void setup() {
   // Set up the serial communication
   Serial.begin(115200);
 
+  // Enable motors
   pinMode(MOTORS_ENABLE, OUTPUT);
   digitalWrite(MOTORS_ENABLE, LOW);
 
 
   // Set the maximum speed and acceleration for each stepper motor
-  for (auto &motor : steppers)
-  {
+  for (auto &motor : steppers) {
     motor.setMaxSpeed(800 * MICSTEP);
     motor.setAcceleration(2000 * MICSTEP);
   }
 }
 
-bool anyMotorRunning;
-int counter = 0;
-
-void loop()
-{
-
-  anyMotorRunning = false;
-  for (auto &motor : steppers)
-  {
-    anyMotorRunning = anyMotorRunning || motor.run();
+// TODO: this should move the motors to their "base" position
+void stopAllMotors() {
+  for (auto &motor : steppers) {
+    motor.stop();
   }
+}
 
-  if (!anyMotorRunning)
-  {
+bool anyMotorMoving() {
+  for (auto &motor : steppers) {
+    if (motor.distanceToGo() != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// void runSine(
+//   int magnitude = 200, // Vertical magnitude of the wave
+//   float overlap = 0.4 // Fraction of the wave to overlap with the next wave
+// ) {
+//   int direction = direction || 1;
+//   int currentMove = currentMove || 0;
+//   int nextMove = currentMove == MOTOR_COUNT - 1 ? 0 : currentMove + 1;
+
+//   if (!anyMotorMoving()) {
+//     steppers[0].move(magnitude * MICSTEP * direction);
+//   } else {
+//     if (abs(steppers[currentMove].distanceToGo()) <= magnitude * MICSTEP * overlap) {
+//       steppers[nextMove].move(magnitude * MICSTEP * direction);
+//       // Advance currentMove or reset to 0 if we've reached the end
+//       currentMove = currentMove == MOTOR_COUNT - 1 ? 0 : currentMove + 1;
+//     }
+//   }
+// }
+
+void runSine(
+  int magnitude = 200 // Vertical magnitude of the wave
+) {
+  unsigned long currentMillis = millis();
+  int direction = direction || 1;
+  
+  if (!stepper1.isRunning()) {
+    if (abs(stepper2.distanceToGo()) <= magnitude * MICSTEP * 0.3) {
+
+    }
+    stepper1.move(magnitude * MICSTEP * direction);
+  }
+  if (currentMillis - previousMillis >= 1000) {
+    stepper2.move(magnitude * MICSTEP * direction);
+    previousMillis = currentMillis;
+  }
+  if (currentMillis - previousMillis >= 1000) {
+    stepper3.move(magnitude * MICSTEP * direction);
+    previousMillis = currentMillis;
+  }
+}
+
+void runSequentially() {
+  int counter = counter == MOTOR_COUNT - 1 ? 0 : counter;
+  int direction = direction || 1;
+  if (anyMotorMoving()) {
+    // Stop all motors
+    stopAllMotors();
+  } else {
     unsigned long currentMillis = millis();
-    if (currentMillis - previousMillis >= interval)
-    {
+    if (currentMillis - previousMillis >= interval) {
       Serial.print("Moving: ");
       Serial.println(counter);
       steppers[counter].move(200 * MICSTEP * direction);
@@ -65,8 +112,7 @@ void loop()
       ++counter;
 
       // Reverse the direction after all motors have run
-      if (counter >= MOTOR_COUNT)
-      {
+      if (counter >= MOTOR_COUNT) {
         Serial.println("Resetting counter and reversing");
         counter = 0;
         direction *= -1;
@@ -76,9 +122,13 @@ void loop()
       previousMillis = currentMillis;
     }
   }
+}
 
-  for (auto &motor : steppers)
-  {
+void loop() {
+  // runSequentially();
+  runSine();
+
+  for (auto &motor : steppers) {
     motor.run();
   }
 }
