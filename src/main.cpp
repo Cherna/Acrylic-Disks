@@ -35,7 +35,21 @@ void setup() {
   }
 }
 
-// TODO: this should move the motors to their "base" position
+// TODO: Function to run homing sequence
+void homeAllMotors() {}
+
+// TODO: Function to hold specific angle
+void moveCircleToAngle() {} 
+
+// TODO: Function to move a circle to a "neutral" horizontal position
+void normalizeMotorsHeight() {}
+
+// TODO: Function to move entire circle up
+void allMotorsUp() {}
+
+// TODO: Function to move entire circle down
+void allMotorsDown() {}
+
 void stopAllMotors() {
   for (auto &motor : steppers) {
     motor.stop();
@@ -52,52 +66,7 @@ bool anyMotorMoving() {
 }
 
 
-// void runInternals(AccelStepper &motor, int i, int DIST) {
-//   if (!motor.isRunning()) {
-//     Serial.print(i);
-//     Serial.println(" - Motor is not running, proceeding. Current pos: ");
-//     Serial.println(motor.currentPosition());
-
-//     if (motor.currentPosition() >= DIST || motor.currentPosition() == 0) {
-//       Serial.println(" - Running to negative " + String(DIST));
-//       motor.move(-DIST);
-//     } else if (motor.currentPosition() <= -DIST) {
-//       Serial.println("Running to positive " + String(DIST));
-//       motor.move(DIST);
-//     }
-//   }
-// }
-
-// void runSine(
-//   int magnitude = 300 // Vertical magnitude of the wave
-// ) {
-//   for (auto &motor : steppers) {
-//     motor.setMaxSpeed(50 * MICSTEP);
-//   }
-//   unsigned long currentMillis = millis();
-//   unsigned long previousMillis = previousMillis || 0;
-//   const int DIST = magnitude * MICSTEP;
-//   for (int i = 0; i < MOTOR_COUNT; ++i) {
-//     AccelStepper &motor = steppers[i];
-//     if (i == 0) {
-//       runInternals(motor, i, DIST);
-//     } else {
-//       if (i == 1) {
-//         if (currentMillis - previousMillis >= 1500) {
-//           runInternals(motor, i, DIST);
-//         }
-//       }
-//       if (i == 2) {
-//         if (currentMillis - previousMillis >= 3000) {
-//           runInternals(motor, i, DIST);
-//           previousMillis = currentMillis;
-//         }
-//       }
-//     }
-//   }
-// }
-
-
+// TODO: Include this in the runSine function
 int currentMove = 0;
 int nextMove = 1;
 void runSine(
@@ -117,10 +86,10 @@ void runSine(
   // Serial.println(abs(steppers[currentMove].distanceToGo()));
   // Serial.println(magnitude * MICSTEP * overlap);
 
-  Serial.print("Current move: ");
-  Serial.println(currentMove);
-  Serial.print("Next move: ");
-  Serial.println(nextMove);
+  // Serial.print("Current move: ");
+  // Serial.println(currentMove);
+  // Serial.print("Next move: ");
+  // Serial.println(nextMove);
 
   if (
     steppers[currentMove].isRunning() &&
@@ -128,6 +97,7 @@ void runSine(
   ) {
     Serial.println("Starting next move");
     steppers[nextMove].move(magnitude * MICSTEP * direction);
+    // Reverse current move direction
     if (currentMove == MOTOR_COUNT - 1) {
       direction *= -1;
     }
@@ -142,28 +112,6 @@ void runSine(
     }
   }
 }
-
-// void runSine(
-//   int magnitude = 200 // Vertical magnitude of the wave
-// ) {
-//   unsigned long currentMillis = millis();
-//   int direction = direction || 1;
-  
-//   if (!stepper1.isRunning()) {
-//     if (abs(stepper2.distanceToGo()) <= magnitude * MICSTEP * 0.3) {
-
-//     }
-//     stepper1.move(magnitude * MICSTEP * direction);
-//   }
-//   if (currentMillis - previousMillis >= 1000) {
-//     stepper2.move(magnitude * MICSTEP * direction);
-//     previousMillis = currentMillis;
-//   }
-//   if (currentMillis - previousMillis >= 1000) {
-//     stepper3.move(magnitude * MICSTEP * direction);
-//     previousMillis = currentMillis;
-//   }
-// }
 
 void runSequentially() {
   int counter = 0;
