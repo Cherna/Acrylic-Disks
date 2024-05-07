@@ -148,22 +148,29 @@ void runSine(
   static int currentMove = 0;
   static int nextMove = 1;
   static int direction = 1;
+  static bool start = true;
   if (reset) {
     currentMove = 0;
     nextMove = 1;
     direction = 1;
+    start = true;
+    reset = false;
   }
 
   for(auto &motor : circle) {
     if (motor->maxSpeed() != speed * MICSTEP) {
+      if (debug) {
+        Serial.print("Setting speed to: ");
+        Serial.println(speed * MICSTEP);
+      }
       motor->setMaxSpeed(speed * MICSTEP);
     }
   }
 
   // Start by moving the first motor if no motor is moving
-  if (!anyMotorMoving()) {
-    circle[currentMove]->move(magnitude * MICSTEP * direction * -1);
-  }
+  // if (!anyMotorMoving()) {
+  //   circle[currentMove]->move(magnitude * MICSTEP * direction * -1);
+  // }
 
   if (debug) {
     Serial.println(abs(circle[currentMove]->distanceToGo()));
@@ -177,11 +184,13 @@ void runSine(
 
   if (
     circle[currentMove]->isRunning() &&
-    abs(circle[currentMove]->distanceToGo()) <= magnitude * MICSTEP * overlap
+    abs(circle[currentMove]->distanceToGo()) <= magnitude * MICSTEP * overlap ||
+    start
   ) {
     if (debug) {
       Serial.println("Starting next move");
     };
+    start = false;
     circle[nextMove]->move(magnitude * MICSTEP * direction);
 
     // Reverse current move direction
@@ -199,6 +208,69 @@ void runSine(
     // }
   }
 }
+
+// void runSine(
+//   bool reset = false,
+//   bool debug = false,
+//   std::array<AccelStepper*, 3> circle = circle1,
+//   int magnitude = 300, // Vertical magnitude of the wave in steps
+//   float overlap = 0.35, // Fraction of the wave to overlap with the previous move
+//   int speed = 100
+// ) {
+//   static int currentMove = 0;
+//   static int nextMove = 1;
+//   static int direction = 1;
+//   if (reset) {
+//     currentMove = 0;
+//     nextMove = 1;
+//     direction = 1;
+//   }
+
+//   for(auto &motor : circle) {
+//     if (motor->maxSpeed() != speed * MICSTEP) {
+//       motor->setMaxSpeed(speed * MICSTEP);
+//     }
+//   }
+
+//   // Start by moving the first motor if no motor is moving
+//   if (!anyMotorMoving()) {
+//     circle[currentMove]->move(magnitude * MICSTEP * direction * -1);
+//   }
+
+//   if (debug) {
+//     Serial.println(abs(circle[currentMove]->distanceToGo()));
+//     Serial.println(magnitude * MICSTEP * overlap);
+
+//     Serial.print("Current move: ");
+//     Serial.println(currentMove);
+//     Serial.print("Next move: ");
+//     Serial.println(nextMove);
+//   };
+
+//   if (
+//     circle[currentMove]->isRunning() &&
+//     abs(circle[currentMove]->distanceToGo()) <= magnitude * MICSTEP * overlap
+//   ) {
+//     if (debug) {
+//       Serial.println("Starting next move");
+//     };
+//     circle[nextMove]->move(magnitude * MICSTEP * direction);
+
+//     // Reverse current move direction
+//     direction *= (currentMove == getArrayLength(circle) - 1) ? -1 : 1;
+//     currentMove = (currentMove == getArrayLength(circle) - 1) ? 0 : currentMove + 1;
+//     nextMove = (nextMove == getArrayLength(circle) - 1) ? 0 : nextMove + 1;
+//     // // Advance currentMove or reset to 0 if we've reached the end
+//     // if (currentMove == (MOTOR_COUNT - 1)) {
+//     //   currentMove = 0;
+//     // } else if (nextMove == (MOTOR_COUNT - 1)) {
+//     //   nextMove = 0;
+//     // } else {
+//     //   currentMove++;
+//     //   nextMove++;
+//     // }
+//   }
+// }
 
 void runSequentially(std::array<AccelStepper*, 3> circle = circle1) {
   int counter = 0;
