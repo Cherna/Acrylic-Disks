@@ -1,0 +1,9 @@
+{
+  "files.associations": {
+    "*.ejs": "html",
+    "*.mdx": "mdx",
+    "memory": "cpp",
+    "random": "cpp",
+    "optional": "cpp"
+  }
+}

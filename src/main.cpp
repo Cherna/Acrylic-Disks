@@ -20,7 +20,10 @@
 #define UP_BTN 26
 #define DOWN_BTN 27
 
-#define MICSTEP 32 // Microstepping set on the driver
+#define DEFAULT_SPEED 1000
+#define DEFAULT_ACCELERATION 4000
+
+#define MICSTEP 16 // Microstepping set on the driver
 
 AccelStepper stepper1(AccelStepper::DRIVER, MOTOR1_STEP_PIN, MOTOR1_DIR_PIN);
 AccelStepper stepper2(AccelStepper::DRIVER, MOTOR2_STEP_PIN, MOTOR2_DIR_PIN);
@@ -52,8 +55,8 @@ void setup() {
 
   // Set the maximum speed and acceleration for each stepper motor
   for (auto &motor : allSteppers) {
-    motor->setMaxSpeed(1000 * MICSTEP);
-    motor->setAcceleration(4000 * MICSTEP);
+    motor->setMaxSpeed(DEFAULT_SPEED * MICSTEP);
+    motor->setAcceleration(DEFAULT_ACCELERATION * MICSTEP);
   }
 }
 
@@ -96,9 +99,15 @@ void normalizeMotorsHeight(std::array<AccelStepper*, 3> circle = circle1) {
   }
 }
 
-void setSpeedAll(int speed = 1000) {
+void setSpeedAll(int speed = DEFAULT_SPEED) {
   for (auto &motor : allSteppers) {
     motor->setMaxSpeed(speed * MICSTEP);
+  }
+}
+
+void setAccelAll(int accel = DEFAULT_ACCELERATION) {
+  for (auto &motor : allSteppers) {
+    motor->setAcceleration(accel * MICSTEP);
   }
 }
 
@@ -137,19 +146,23 @@ bool anyMotorMoving() {
   return false;
 }
 
-void runSine(
-  bool reset = false,
-  bool debug = false,
-  std::array<AccelStepper*, 3> circle = circle1,
-  int magnitude = 300, // Vertical magnitude of the wave in steps
-  float overlap = 0.35, // Fraction of the wave to overlap with the previous move
-  int speed = 100
-) {
+struct sineArgs {
+  bool reset = false;
+  bool debug = false;
+  std::array<AccelStepper*, 3> circle = circle1;
+  int magnitude = 500; // Vertical magnitude of the wave in steps
+  double overlap = 0.33; // Fraction of the next move to overlap with the previous move
+  int speed = 200;
+};
+
+sineArgs args;
+void runSine(sineArgs args = args) {
   static int currentMove = 0;
   static int nextMove = 1;
   static int direction = 1;
   static bool start = true;
-  if (reset) {
+  static bool reset = false;
+  if (args.reset) {
     currentMove = 0;
     nextMove = 1;
     direction = 1;
@@ -157,24 +170,24 @@ void runSine(
     reset = false;
   }
 
-  for(auto &motor : circle) {
-    if (motor->maxSpeed() != speed * MICSTEP) {
-      if (debug) {
-        Serial.print("Setting speed to: ");
-        Serial.println(speed * MICSTEP);
-      }
-      motor->setMaxSpeed(speed * MICSTEP);
-    }
-  }
+  // for(auto &motor : args.circle) {
+  //   if (motor->maxSpeed() != args.speed * MICSTEP) {
+  //     if (args.debug) {
+  //       Serial.print("Setting speed to: ");
+  //       Serial.println(args.speed * MICSTEP);
+  //     }
+  //     motor->setMaxSpeed(args.speed * MICSTEP);
+  //   }
+  // };
 
   // Start by moving the first motor if no motor is moving
   // if (!anyMotorMoving()) {
   //   circle[currentMove]->move(magnitude * MICSTEP * direction * -1);
   // }
 
-  if (debug) {
-    Serial.println(abs(circle[currentMove]->distanceToGo()));
-    Serial.println(magnitude * MICSTEP * overlap);
+  if (args.debug) {
+    Serial.println(abs(args.circle[currentMove]->distanceToGo()));
+    Serial.println(args.magnitude * MICSTEP * args.overlap);
 
     Serial.print("Current move: ");
     Serial.println(currentMove);
@@ -183,20 +196,20 @@ void runSine(
   };
 
   if (
-    circle[currentMove]->isRunning() &&
-    abs(circle[currentMove]->distanceToGo()) <= magnitude * MICSTEP * overlap ||
+    args.circle[currentMove]->isRunning() &&
+    abs(args.circle[currentMove]->distanceToGo()) <= args.magnitude * MICSTEP * args.overlap ||
     start
   ) {
-    if (debug) {
+    if (args.debug) {
       Serial.println("Starting next move");
     };
     start = false;
-    circle[nextMove]->move(magnitude * MICSTEP * direction);
+    args.circle[nextMove]->move(args.magnitude * MICSTEP * direction);
 
     // Reverse current move direction
-    direction *= (currentMove == getArrayLength(circle) - 1) ? -1 : 1;
-    currentMove = (currentMove == getArrayLength(circle) - 1) ? 0 : currentMove + 1;
-    nextMove = (nextMove == getArrayLength(circle) - 1) ? 0 : nextMove + 1;
+    direction *= (currentMove == getArrayLength(args.circle) - 1) ? -1 : 1;
+    currentMove = (currentMove == getArrayLength(args.circle) - 1) ? 0 : currentMove + 1;
+    nextMove = (nextMove == getArrayLength(args.circle) - 1) ? 0 : nextMove + 1;
     // // Advance currentMove or reset to 0 if we've reached the end
     // if (currentMove == (MOTOR_COUNT - 1)) {
     //   currentMove = 0;
@@ -306,20 +319,20 @@ void loop() {
   static unsigned long previousMillis = 0;
   static bool stopped = true;
   if (millis() - previousMillis >= 1000) {
-    Serial.print("UP: ");
-    Serial.println(digitalRead(UP_BTN));
-    Serial.print("DOWN: ");
-    Serial.println(digitalRead(DOWN_BTN));
+    // Serial.print("UP: ");
+    // Serial.println(digitalRead(UP_BTN));
+    // Serial.print("DOWN: ");
+    // Serial.println(digitalRead(DOWN_BTN));
   }
   //print only every certain amount of time
   if (millis() - previousMillis >= 50) {
     previousMillis = millis();
-    Serial.print("1: ");
-    Serial.println(stepper1.currentPosition());
-    Serial.print("2: ");
-    Serial.println(stepper2.currentPosition());
-    Serial.print("3: ");
-    Serial.println(stepper3.currentPosition());
+    // Serial.print("1: ");
+    // Serial.println(stepper1.currentPosition());
+    // Serial.print("2: ");
+    // Serial.println(stepper2.currentPosition());
+    // Serial.print("3: ");
+    // Serial.println(stepper3.currentPosition());
   }
 
   // if (digitalRead(UP_BTN)) {
@@ -328,28 +341,35 @@ void loop() {
   //   allMotorsDown();
   // }
 
-  // if (digitalRead(UP_BTN) || digitalRead(DOWN_BTN)) {
-  //   for (auto &motor : allSteppers) {
-  //     motor->run();
-  //   }
-  // } else {
-  //   stopAllMotors();
-  // }
-
   if (digitalRead(UP_BTN)) {
     stopped = true;
 
     goAllToZero();
-    setSpeedAll(500);
+    setAccelAll(DEFAULT_ACCELERATION);
+    setSpeedAll(DEFAULT_SPEED);
     // stopAllMotors();
   }
   if (digitalRead(DOWN_BTN)) {
     stopped = false;
-    runSine(true);
+    setAccelAll(100);
+    setSpeedAll(400);
+    sineArgs args {};
+    args.reset = true;
+    args.magnitude = 1000;
+    args.overlap = 0.5;
+    runSine(args);
   }
   if (!stopped) {
-    runSine();
+    sineArgs args {};
+    args.magnitude = 1000;
+    args.overlap = 0.5;
+    runSine(args);
   }
+
+  // if (digitalRead(DOWN_BTN)) {
+  //   stopped = false;
+  //   moveCircleToAngle(circle1, 2, 1);
+  // }
 
   for (auto &motor : allSteppers) {
     motor->run();
