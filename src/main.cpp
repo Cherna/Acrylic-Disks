@@ -2,6 +2,9 @@
 #include <AccelStepper.h>
 #include <array>
 
+#include <utility.h>
+#include <sequences.h>
+
 // Define stepper motor connections and steps per revolution
 #define MOTOR1_STEP_PIN 12
 #define MOTOR1_DIR_PIN 13
@@ -26,10 +29,10 @@
 #define UP_BTN 34 // Needs external PULLDOWN resistor
 #define DOWN_BTN 35 // Needs external PULLDOWN resistor
 
-#define DEFAULT_SPEED 1000
-#define DEFAULT_ACCELERATION 4000
+const int DEFAULT_SPEED = 1000;
+const int DEFAULT_ACCELERATION = 4000;
 
-#define MICSTEP 16 // Microstepping set on the driver
+const int MICSTEP = 16; // Microstepping set on the driver
 
 AccelStepper stepper1(AccelStepper::DRIVER, MOTOR1_STEP_PIN, MOTOR1_DIR_PIN);
 AccelStepper stepper2(AccelStepper::DRIVER, MOTOR2_STEP_PIN, MOTOR2_DIR_PIN);
@@ -101,107 +104,21 @@ bool isCircleEnabled(std::array<AccelStepper*, 3> circle) {
   }
 }
 
-int angleToSteps(int angle) {
-  static double hypothenuseInMm = 1700;
-  static double circumferenceInMm = 264;
-  static double distancePerStepInMm = 0.04;
-  double angleInRadians = angle * M_PI / 180.0;
-  double oppositeSideInMm = hypothenuseInMm * sin(angleInRadians);
-
-  return oppositeSideInMm / distancePerStepInMm; 
-}
-
-// TODO: Function to hold specific angle
-void moveCircleToAngle(
-  std::array<AccelStepper*, 3> circle = circle1,
-  int angle = 10, // Angle in degrees
-  int direction = 0
+void runSine(
+  std::array<AccelStepper*, 3> circle,
+  bool reset,
+  int magnitude, // Vertical magnitude of the wave in steps
+  double overlap // Fraction of the next move to overlap with the previous move)
 ) {
-  circle[direction]->moveTo(angleToSteps(angle) * MICSTEP);
-}
-
-// TODO: Function to move a circle to a "neutral" horizontal position
-void normalizeMotorsHeight(std::array<AccelStepper*, 3> circle = circle1) {
-  // Get the current position of the motor and set the new position to
-  // a round number closest to the average between this circles motors position
-  int avgPos = (
-    circle[0]->currentPosition() +
-    circle[1]->currentPosition() +
-    circle[2]->currentPosition()
-    )/3;
-  
-  for (auto &motor : circle) {
-    motor->moveTo(avgPos);
-  }
-}
-
-void setSpeedAll(int speed = DEFAULT_SPEED) {
-  for (auto &motor : allSteppers) {
-    motor->setMaxSpeed(speed * MICSTEP);
-  }
-}
-
-void setAccelAll(int accel = DEFAULT_ACCELERATION) {
-  for (auto &motor : allSteppers) {
-    motor->setAcceleration(accel * MICSTEP);
-  }
-}
-
-// Function to move entire circle up
-void allMotorsUp(std::array<AccelStepper*, 3> circle = circle1) {
-  for (auto motor : circle) {
-    motor->move(-200 * MICSTEP);
-  }
-}
-
-// Function to move entire circle down
-void allMotorsDown(std::array<AccelStepper*, 3> circle = circle1) {
-  for (auto motor : circle) {
-    motor->move(200 * MICSTEP);
-  }
-}
-
-void stopAllMotors() {
-  for (auto &motor : allSteppers) {
-    motor->stop();
-  }
-}
-
-void circleToZero(std::array<AccelStepper*, 3> circle) {
-  for (auto &motor : circle) {
-    motor->moveTo(0);
-  }
-}
-
-bool isCircleMoving(std::array<AccelStepper*, 3> circle) {
-  for (auto &motor : circle) {
-    if (motor->isRunning()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-struct sineArgs {
-  bool reset = false;
-  std::array<AccelStepper*, 3> circle = circle1;
-  int magnitude = 500; // Vertical magnitude of the wave in steps
-  double overlap = 0.33; // Fraction of the next move to overlap with the previous move
-  int speed = 200;
-};
-
-static sineArgs baseArgs;
-void static runSine(sineArgs args = baseArgs) {
+  static unsigned long logMillis = 0;
   static int currentMove = 0;
   static int nextMove = 1;
   static int direction = 1;
   static bool start = true;
 
-  static bool reset = false;
-  static int magnitude = args.magnitude;
-  static double overlap = args.overlap;
-  static int speed = args.speed;
-  if (args.reset) {
+  // static int magnitude = magnitude;
+  // static double overlap = overlap;
+  if (reset) {
     currentMove = 0;
     nextMove = 1;
     direction = 1;
@@ -209,125 +126,102 @@ void static runSine(sineArgs args = baseArgs) {
     reset = false;
   }
 
+  if (millis() - logMillis > 500) {
+    logMillis = millis();
+    Serial.println(overlap);
+    Serial.println(reset);
+  }
+
   if (
-    args.circle[currentMove]->isRunning() &&
-    abs(args.circle[currentMove]->distanceToGo()) <= magnitude * MICSTEP * overlap ||
+    circle[currentMove]->isRunning() &&
+    abs(circle[currentMove]->distanceToGo()) <= magnitude * MICSTEP * overlap ||
     start
   ) {
     // Serial.println("Starting next move");
     start = false;
-    args.circle[nextMove]->move(magnitude * MICSTEP * direction);
+    circle[nextMove]->move(magnitude * MICSTEP * direction);
 
-    direction *= (currentMove == getArrayLength(args.circle) - 1) ? -1 : 1;
-    currentMove = (currentMove == getArrayLength(args.circle) - 1) ? 0 : currentMove + 1;
-    nextMove = (nextMove == getArrayLength(args.circle) - 1) ? 0 : nextMove + 1;
+    direction *= (currentMove == getArrayLength(circle) - 1) ? -1 : 1;
+    currentMove = (currentMove == getArrayLength(circle) - 1) ? 0 : currentMove + 1;
+    nextMove = (nextMove == getArrayLength(circle) - 1) ? 0 : nextMove + 1;
   }
 }
 
-void runSequentially(std::array<AccelStepper*, 3> circle = circle1) {
-  int counter = 0;
-  counter = counter == getArrayLength(circle) - 1 ? 0 : counter;
-  unsigned long previousMillis = previousMillis || 0;
-  int direction = direction || 1;
-  if (!isCircleMoving(circle)) {
-    // Stop all motors
-    stopAllMotors();
-  } else {
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousMillis >= 500) {
-      Serial.print("Moving: ");
-      Serial.println(counter);
-      allSteppers[counter]->move(200 * MICSTEP * direction);
+struct sequenceType {
+  void (*seqFn)(std::array<AccelStepper*, 3> circle, bool reset);
+  int time;
+};
 
-      // Increase motor counter
-      ++counter;
+sequenceType slowSineSeq = {runSlowSine, 10000};
+sequenceType fastSineSeq = {runFastSine, 10000};
+sequenceType keepAngle1Seq = {runKeepAngle1, 5000};
+sequenceType keepAngle2Seq = {runKeepAngle2, 5000};
+sequenceType fastSeq = {runFastSequentially, 5000};
 
-      // Reverse the direction after all motors have run
-      if (counter >= getArrayLength(circle)) {
-        Serial.println("Resetting counter and reversing");
-        counter = 0;
-        direction *= -1;
-      }
-
-      // Reset the timer for the next interval
-      previousMillis = currentMillis;
-    }
-  }
-}
-
-void static runSlowSine(bool reset = false) {
-  sineArgs args {};
-  args.magnitude = 1000;
-  args.overlap = 0.5;
-  if (reset) {
-    setAccelAll(100);
-    setSpeedAll(200);
-    args.reset = true;
-    runSine(args);
-  } else {
-    args.reset = false;
-    runSine(args);
-  }
-}
-
-void static runFastSine(bool reset = false) {
-  sineArgs args {};
-  args.magnitude = 800;
-  args.overlap = 0.5;
-  if (reset) {
-    setAccelAll(800);
-    setSpeedAll(2000);
-    args.reset = true;
-    runSine(args);
-  } else {
-    args.reset = false;
-    runSine(args);
-  }
-}
-
-void static runKeepAngle(bool reset = false) {
-  if (reset) {
-    setAccelAll(DEFAULT_ACCELERATION);
-    setSpeedAll(DEFAULT_SPEED);
-    moveCircleToAngle(circle1, 2, 0);
-  }
-}
-
-void runSequence(bool next = false) {
+bool runSequence(
+  std::array<AccelStepper*, 3> circle,
+  bool startNext = false,
+  bool restart = false
+) {
+  static unsigned long prevLogMillis = 0;
+  static unsigned long prevFnMillis = 0;
   static int current = 0;
-  static std::array<void (*)(bool reset), 3> sequence = {
-    runSlowSine,
-    runFastSine,
-    runKeepAngle
+  static bool advancing = false;
+  if (restart) {
+    current = 0;
+  }
+  static std::array<sequenceType, 5> sequence = {
+    fastSeq,
+    slowSineSeq,
+    fastSineSeq,
+    keepAngle1Seq,
+    keepAngle2Seq
   };
-  if (next) {
+  if (millis() - prevLogMillis >= 500) {
+    prevLogMillis = millis();
+    Serial.println("Run Sequence");
+  }
+  if (millis() - prevFnMillis >= sequence[current].time) {
+    prevFnMillis = millis();
     current = current >= (getArrayLength(sequence) - 1) ? 0 : current + 1;
+    advancing = true;
+    Serial.print("current fn: ");
     Serial.println(current);
   }
-  sequence[current](next);
+  sequence[current].seqFn(circle, advancing || startNext);
+  if (advancing) {
+    advancing = false;
+    return true;
+  } else {
+    return false;
+  }
 }
 
 void resetCircle(std::array<AccelStepper*, 3> circle) {
-  setAccelAll(DEFAULT_ACCELERATION);
-  setSpeedAll(DEFAULT_SPEED);
+  setAccelAll(circle, DEFAULT_ACCELERATION);
+  setSpeedAll(circle, DEFAULT_SPEED);
   circleToZero(circle);
 }
 
-static unsigned long previousLogMillis = 0;
-static unsigned long prevCountMillis = 0;
-static bool stopped = true;
-static bool awaitToFinishReset = false;
+#define debugLoop 0
+
 void loop() {
-  // if (millis() - previousLogMillis >= 1000) {
-  //   previousLogMillis = millis();
-  //   Serial.print("UP: ");
-  //   Serial.println(digitalRead(UP_BTN));
-  //   Serial.print("DOWN: ");
-  //   Serial.println(digitalRead(DOWN_BTN));
-  // }
+  static unsigned long prevLogMillis = 0;
+  static unsigned long prevPosMillis = 0;
+  static bool stopped = true;
+  static bool awaitToFinishReset = false;
+  if (debugLoop) {
+    if (millis() - prevLogMillis >= 1000) {
+      prevLogMillis = millis();
+      Serial.print("UP: ");
+      Serial.println(digitalRead(UP_BTN));
+      Serial.print("DOWN: ");
+      Serial.println(digitalRead(DOWN_BTN));
+    }
+  }
   
-  // if (millis() - previousLogMillis >= 100) {
-  //   previousLogMillis = millis();
+  // if (millis() - prevPosMillis >= 200) {
+  //   prevPosMillis = millis();
   //   Serial.print("1: ");
   //   Serial.println(stepper1.currentPosition());
   //   Serial.print("2: ");
@@ -353,33 +247,36 @@ void loop() {
   if (digitalRead(DOWN_BTN) && stopped) {
     Serial.println("START");
     stopped = false;
-    runSequence(true);
+    runSequence(circle1, true, true);
   }
 
   // Continue
   if (!stopped) {
-    if (millis() - previousLogMillis >= 2) {
-      previousLogMillis = millis();
-      Serial.println(stopped);
+    if (awaitToFinishReset) {
+      if (debugLoop) {
+        if (millis() - prevLogMillis >= 500) {
+          prevLogMillis = millis();
+          Serial.println("Awaiting to finish reset");
+        }
+      }
+      if (!isCircleMoving(circle1)) {
+        awaitToFinishReset = false;
+
+        // TODO: Fix why it won't run without this call
+        runSequence(circle1, true);
+      }
+    } else {
+        if (debugLoop) {
+          if (millis() - prevLogMillis >= 500) {
+            prevLogMillis = millis();
+            Serial.print("Continuing: ");
+          }
+        }
+        if (runSequence(circle1)) {
+          resetCircle(circle1);
+          awaitToFinishReset = true;
+        }
     }
-    runSequence();
-    // if (awaitToFinishReset) {
-    //   Serial.println("Awaiting finish reset");
-    //   if (!isCircleMoving(circle1)) {
-    //     awaitToFinishReset = false;
-    //   }
-    // } else {
-      // if (millis() - prevCountMillis >= 10000) {
-      //   Serial.println("Switching Sequence");
-      //   prevCountMillis = millis();
-      //   runSequence(true);
-      //   // resetCircle(circle1);
-      //   // awaitToFinishReset = true;
-      // } else {
-      //   Serial.println("Continuing");
-      //   runSequence();
-      // }
-    // }
   }
 
   // Disable when not moving
