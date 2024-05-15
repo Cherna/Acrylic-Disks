@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <AccelStepper.h>
 #include <array>
+#include <Mux.h>
+
+using namespace admux;
 
 #include <utility.h>
 #include <sequences.h>
@@ -22,15 +25,22 @@
 #define MOTOR1_EN 4
 #define MOTOR2_EN 25
 #define MOTOR3_EN 26
-#define MOTOR4_EN 27
-#define MOTOR5_EN 32
-#define MOTOR6_EN 33
+#define MOTOR4_EN 50
+#define MOTOR5_EN 50
+#define MOTOR6_EN 50
+
+#define MUXA 27
+#define MUXB 32
+#define MUXC 33
+#define MUXCOM 5
 
 #define UP_BTN 34 // Needs external PULLDOWN resistor
 #define DOWN_BTN 35 // Needs external PULLDOWN resistor
 
-const int DEFAULT_SPEED = 1000;
-const int DEFAULT_ACCELERATION = 4000;
+Mux mux(Pin(MUXCOM, INPUT_PULLDOWN, PinType::Digital), Pinset(MUXA, MUXB, MUXC));
+
+const int DEFAULT_SPEED = 600;
+const int DEFAULT_ACCELERATION = 1000;
 
 const int MICSTEP = 16; // Microstepping set on the driver
 
@@ -72,6 +82,7 @@ void setup() {
   pinMode(MOTOR6_EN, OUTPUT);
   digitalWrite(MOTOR6_EN, HIGH);
 
+
   // Set the maximum speed and acceleration for each stepper motor
   for (auto &motor : allSteppers) {
     motor->setMaxSpeed(DEFAULT_SPEED * MICSTEP);
@@ -79,9 +90,57 @@ void setup() {
   }
 }
 
-// TODO: Function to run homing sequence
-void homeAllMotors(std::array<AccelStepper*, 3> circle = circle1) {
-  // Move all motors in a certain direction until the home switches are tripped
+static bool stepper1Homed = false;
+static bool stepper2Homed = false;
+static bool stepper3Homed = false;
+static bool stepper4Homed = false;
+static bool stepper5Homed = false;
+static bool stepper6Homed = false;
+
+bool homeCircle(std::array<AccelStepper*, 3> circle) {
+  if (circle == circle1) {
+    if (!stepper1Homed) {
+      stepper1.move(-200 * MICSTEP);
+    };
+    if (!stepper2Homed) {
+      stepper2.move(-200 * MICSTEP);
+    }
+    if (!stepper3Homed) {
+      stepper3.move(-200 * MICSTEP);
+    }
+    if (mux.read(0)) {
+      stepper1Homed = true;
+    }
+    if (mux.read(1)) {
+      stepper2Homed = true;
+    }
+    if (mux.read(2)) {
+      stepper3Homed = true;
+    }
+  } else {
+    if (!stepper4Homed) {
+      stepper4.move(-200 * MICSTEP);
+    };
+    if (!stepper5Homed) {
+      stepper5.move(-200 * MICSTEP);
+    }
+    if (!stepper6Homed) {
+      stepper6.move(-200 * MICSTEP);
+    }
+    if (mux.read(3)) {
+      stepper4Homed = true;
+    }
+    if (mux.read(4)) {
+      stepper5Homed = true;
+    }
+    if (mux.read(5)) {
+      stepper6Homed = true;
+    }
+  }
+
+  return circle == circle1
+    ? stepper1Homed && stepper2Homed && stepper3Homed
+    : stepper4Homed && stepper5Homed && stepper6Homed;
 }
 
 void toggleCircle(std::array<AccelStepper*, 3> circle, bool enable) {
@@ -152,11 +211,11 @@ struct sequenceType {
   int time;
 };
 
-sequenceType slowSineSeq = {runSlowSine, 10000};
-sequenceType fastSineSeq = {runFastSine, 10000};
-sequenceType keepAngle1Seq = {runKeepAngle1, 5000};
-sequenceType keepAngle2Seq = {runKeepAngle2, 5000};
-sequenceType fastSeq = {runFastSequentially, 5000};
+sequenceType slowSineSeq = {runSlowSine, 30000};
+sequenceType fastSineSeq = {runFastSine, 30000};
+sequenceType keepAngle1Seq = {runKeepAngle1, 15000};
+sequenceType keepAngle2Seq = {runKeepAngle2, 15000};
+sequenceType fastSeq = {runFastSequentially, 15000};
 
 bool runSequence(
   std::array<AccelStepper*, 3> circle,
@@ -203,20 +262,32 @@ void resetCircle(std::array<AccelStepper*, 3> circle) {
   circleToZero(circle);
 }
 
-#define debugLoop 0
+#define debugLoop 1
 
 void loop() {
   static unsigned long prevLogMillis = 0;
   static unsigned long prevPosMillis = 0;
   static bool stopped = true;
   static bool awaitToFinishReset = false;
+  static bool circle1Homed = false;
+  static bool circle2Homed = false;
+  static bool circle1IsHoming = false;
+  static bool circle2IsHoming = false;
+
   if (debugLoop) {
-    if (millis() - prevLogMillis >= 1000) {
+    if (millis() - prevLogMillis >= 200) {
       prevLogMillis = millis();
       Serial.print("UP: ");
       Serial.println(digitalRead(UP_BTN));
       Serial.print("DOWN: ");
       Serial.println(digitalRead(DOWN_BTN));
+
+      Serial.print("home1: ");
+      Serial.println(mux.read(0));
+      Serial.print("home2: ");
+      Serial.println(mux.read(1));
+      Serial.print("home3: ");
+      Serial.println(mux.read(2));
     }
   }
   
@@ -246,8 +317,28 @@ void loop() {
   // Start
   if (digitalRead(DOWN_BTN) && stopped) {
     Serial.println("START");
-    stopped = false;
-    runSequence(circle1, true, true);
+    if (circle1Homed && circle2Homed) {
+      stopped = false;
+      runSequence(circle1, true, true);
+    } else {
+      circle1IsHoming = true;
+      circle2IsHoming = true;
+      homeCircle(circle1);
+      homeCircle(circle2);
+    }
+  }
+
+  if (circle1IsHoming) {
+    if (homeCircle(circle1)) {
+      circle1IsHoming = false;
+      circle1Homed = true;
+    }
+  }
+  if (circle2IsHoming) {
+    if (homeCircle(circle2)) {
+      circle2IsHoming = false;
+      circle2Homed = true;
+    }
   }
 
   // Continue

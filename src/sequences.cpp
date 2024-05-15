@@ -3,8 +3,8 @@
 
 void runSlowSine(std::array<AccelStepper*, 3> circle, bool reset) {
   if (reset) {
-    setAccelAll(circle, 100);
-    setSpeedAll(circle, 200);
+    setAccelAll(circle, 40);
+    setSpeedAll(circle, 120);
     runSine(circle, reset, 1000, 0.66);
   } else {
     runSine(circle, reset, 1000, 0.66);
@@ -13,8 +13,8 @@ void runSlowSine(std::array<AccelStepper*, 3> circle, bool reset) {
 
 void runFastSine(std::array<AccelStepper*, 3> circle, bool reset) {
   if (reset) {
-    setAccelAll(circle, 800);
-    setSpeedAll(circle, 2000);
+    setAccelAll(circle, 100);
+    setSpeedAll(circle, 200);
     runSine(circle, reset, 800, 0.5);
   } else {
     runSine(circle, reset, 800, 0.5);
@@ -23,8 +23,8 @@ void runFastSine(std::array<AccelStepper*, 3> circle, bool reset) {
 
 void runFastSequentially(std::array<AccelStepper*, 3> circle, bool reset) {
   if (reset) {
-    setAccelAll(circle, 1200);
-    setSpeedAll(circle, 3000);
+    setAccelAll(circle, 600);
+    setSpeedAll(circle, 300);
     runSine(circle, reset, 100, 0.01);
   } else {
     runSine(circle, reset, 100, 0.01);
