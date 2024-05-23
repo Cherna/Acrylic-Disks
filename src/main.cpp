@@ -1,12 +1,10 @@
 #include <Arduino.h>
 #include <AccelStepper.h>
 #include <array>
-#include <Mux.h>
-
-using namespace admux;
 
 #include <utility.h>
 #include <sequences.h>
+#include <PCF8574.h>
 
 // Define stepper motor connections and steps per revolution
 #define MOTOR1_STEP_PIN 12
@@ -17,27 +15,48 @@ using namespace admux;
 #define MOTOR3_DIR_PIN 17
 #define MOTOR4_STEP_PIN 18
 #define MOTOR4_DIR_PIN 19
-#define MOTOR5_STEP_PIN 20
-#define MOTOR5_DIR_PIN 21
-#define MOTOR6_STEP_PIN 22
-#define MOTOR6_DIR_PIN 23
+#define MOTOR5_STEP_PIN 23
+#define MOTOR5_DIR_PIN 2
+#define MOTOR6_STEP_PIN 0
+#define MOTOR6_DIR_PIN 5
 
-#define MOTOR1_EN 4
-#define MOTOR2_EN 25
-#define MOTOR3_EN 26
-#define MOTOR4_EN 50
-#define MOTOR5_EN 50
-#define MOTOR6_EN 50
+#define I2C_SDA_LINE 21
+#define I2C_SCL_LINE 22
 
-#define MUXA 27
-#define MUXB 32
-#define MUXC 33
-#define MUXCOM 5
+#define ENDSTOP_1 4
+#define ENDSTOP_2 25
+#define ENDSTOP_3 26
+#define ENDSTOP_4 27
+#define ENDSTOP_5 32
+#define ENDSTOP_6 33
+
+#define MOTOR0_CTRL 27
+#define MOTOR1_CTRL 32
+#define MOTOR2_CTRL 33
+#define MOTOR_INVERT 23
+
+// Enable pins are in PCF8574 expander pinset
+#define MOTOR1_EN P0
+#define MOTOR2_EN P1
+#define MOTOR3_EN P2
+#define MOTOR4_EN P3
+#define MOTOR5_EN P4
+#define MOTOR6_EN P5
+
+// Missing pins
+// Circle1LEDs
+// Circle2LEDs
+// ----
+// 6 motor enable pins
+// ----
+// 6 input endstop pins
+// ----
+// ? Inputs for controls?
+
+PCF8574 pcf8574_1(0x20);
 
 #define UP_BTN 34 // Needs external PULLDOWN resistor
 #define DOWN_BTN 35 // Needs external PULLDOWN resistor
-
-Mux mux(Pin(MUXCOM, INPUT_PULLDOWN, PinType::Digital), Pinset(MUXA, MUXB, MUXC));
 
 const int DEFAULT_SPEED = 600;
 const int DEFAULT_ACCELERATION = 1000;
@@ -65,23 +84,39 @@ void setup() {
   Serial.begin(250000);
 
   // Set up buttons
-  pinMode(UP_BTN, INPUT);
-  pinMode(DOWN_BTN, INPUT);
+  pinMode(UP_BTN, INPUT); // Can't be set as PULLDOWN, needs external pulldown resistor
+  pinMode(DOWN_BTN, INPUT); // Can't be set as PULLDOWN, needs external pulldown resistor
 
   // Set up enable pins
-  pinMode(MOTOR1_EN, OUTPUT);
-  digitalWrite(MOTOR1_EN, HIGH);
-  pinMode(MOTOR2_EN, OUTPUT);
-  digitalWrite(MOTOR2_EN, HIGH);
-  pinMode(MOTOR3_EN, OUTPUT);
-  digitalWrite(MOTOR3_EN, HIGH);
-  pinMode(MOTOR4_EN, OUTPUT);
-  digitalWrite(MOTOR4_EN, HIGH);
-  pinMode(MOTOR5_EN, OUTPUT);
-  digitalWrite(MOTOR5_EN, HIGH);
-  pinMode(MOTOR6_EN, OUTPUT);
-  digitalWrite(MOTOR6_EN, HIGH);
+  pinMode(ENDSTOP_1, INPUT_PULLDOWN);
+  pinMode(ENDSTOP_2, INPUT_PULLDOWN);
+  pinMode(ENDSTOP_3, INPUT_PULLDOWN);
+  pinMode(ENDSTOP_4, INPUT_PULLDOWN);
+  pinMode(ENDSTOP_5, INPUT_PULLDOWN);
+  pinMode(ENDSTOP_6, INPUT_PULLDOWN);
 
+  // Set up Motor Outputs
+  pcf8574_1.pinMode(MOTOR1_EN, OUTPUT);
+  pcf8574_1.pinMode(MOTOR2_EN, OUTPUT);
+  pcf8574_1.pinMode(MOTOR3_EN, OUTPUT);
+  pcf8574_1.pinMode(MOTOR4_EN, OUTPUT);
+  pcf8574_1.pinMode(MOTOR5_EN, OUTPUT);
+  pcf8574_1.pinMode(MOTOR6_EN, OUTPUT);
+  
+
+  pcf8574_1.begin();
+
+  pcf8574_1.digitalWrite(MOTOR1_EN, LOW);
+  pcf8574_1.digitalWrite(MOTOR2_EN, LOW);
+  pcf8574_1.digitalWrite(MOTOR3_EN, LOW);
+  pcf8574_1.digitalWrite(MOTOR4_EN, LOW);
+  pcf8574_1.digitalWrite(MOTOR5_EN, LOW);
+  pcf8574_1.digitalWrite(MOTOR6_EN, LOW);
+
+  pinMode(MOTOR0_CTRL, INPUT_PULLDOWN);
+  pinMode(MOTOR1_CTRL, INPUT_PULLDOWN);
+  pinMode(MOTOR2_CTRL, INPUT_PULLDOWN);
+  pinMode(MOTOR_INVERT, INPUT_PULLDOWN);
 
   // Set the maximum speed and acceleration for each stepper motor
   for (auto &motor : allSteppers) {
@@ -98,43 +133,57 @@ static bool stepper5Homed = false;
 static bool stepper6Homed = false;
 
 bool homeCircle(std::array<AccelStepper*, 3> circle) {
+  setSpeedAll(circle, 1000);
+  setAccelAll(circle, 1000);
   if (circle == circle1) {
+    if (digitalRead(ENDSTOP_1)) {
+      stepper1Homed = true;
+      stepper1.stop();
+      stepper1.setCurrentPosition(0);
+    }
+    if (digitalRead(ENDSTOP_2)) {
+      stepper2Homed = true;
+      stepper2.stop();
+      stepper2.setCurrentPosition(0);
+    }
+    if (digitalRead(ENDSTOP_3)) {
+      stepper3Homed = true;
+      stepper3.stop();
+      stepper3.setCurrentPosition(0);
+    }
     if (!stepper1Homed) {
-      stepper1.move(-200 * MICSTEP);
+      stepper1.move(50 * MICSTEP);
     };
     if (!stepper2Homed) {
-      stepper2.move(-200 * MICSTEP);
+      stepper2.move(50 * MICSTEP);
     }
     if (!stepper3Homed) {
-      stepper3.move(-200 * MICSTEP);
-    }
-    if (mux.read(0)) {
-      stepper1Homed = true;
-    }
-    if (mux.read(1)) {
-      stepper2Homed = true;
-    }
-    if (mux.read(2)) {
-      stepper3Homed = true;
+      stepper3.move(50 * MICSTEP);
     }
   } else {
+    if (digitalRead(ENDSTOP_4)) {
+      stepper4Homed = true;
+      stepper4.stop();
+      stepper4.setCurrentPosition(0);
+    }
+    if (digitalRead(ENDSTOP_5)) {
+      stepper5Homed = true;
+      stepper5.stop();
+      stepper5.setCurrentPosition(0);
+    }
+    if (digitalRead(ENDSTOP_6)) {
+      stepper6Homed = true;
+      stepper6.stop();
+      stepper6.setCurrentPosition(0);
+    }
     if (!stepper4Homed) {
-      stepper4.move(-200 * MICSTEP);
+      stepper4.move(50 * MICSTEP);
     };
     if (!stepper5Homed) {
-      stepper5.move(-200 * MICSTEP);
+      stepper5.move(50 * MICSTEP);
     }
     if (!stepper6Homed) {
-      stepper6.move(-200 * MICSTEP);
-    }
-    if (mux.read(3)) {
-      stepper4Homed = true;
-    }
-    if (mux.read(4)) {
-      stepper5Homed = true;
-    }
-    if (mux.read(5)) {
-      stepper6Homed = true;
+      stepper6.move(50 * MICSTEP);
     }
   }
 
@@ -145,21 +194,21 @@ bool homeCircle(std::array<AccelStepper*, 3> circle) {
 
 void toggleCircle(std::array<AccelStepper*, 3> circle, bool enable) {
   if (circle == circle1) {
-    digitalWrite(MOTOR1_EN, !enable);
-    digitalWrite(MOTOR2_EN, !enable);
-    digitalWrite(MOTOR3_EN, !enable);
+    pcf8574_1.digitalWrite(MOTOR1_EN, enable);
+    pcf8574_1.digitalWrite(MOTOR2_EN, enable);
+    pcf8574_1.digitalWrite(MOTOR3_EN, enable);
   } else {
-    digitalWrite(MOTOR4_EN, !enable);
-    digitalWrite(MOTOR5_EN, !enable);
-    digitalWrite(MOTOR6_EN, !enable);
+    pcf8574_1.digitalWrite(MOTOR4_EN, enable);
+    pcf8574_1.digitalWrite(MOTOR5_EN, enable);
+    pcf8574_1.digitalWrite(MOTOR6_EN, enable);
   }
 }
 
 bool isCircleEnabled(std::array<AccelStepper*, 3> circle) {
   if (circle == circle1) {
-    return !digitalRead(MOTOR1_EN);
+    return pcf8574_1.digitalRead(MOTOR1_EN);
   } else {
-    return !digitalRead(MOTOR4_EN);
+    return pcf8574_1.digitalRead(MOTOR4_EN);
   }
 }
 
@@ -262,7 +311,7 @@ void resetCircle(std::array<AccelStepper*, 3> circle) {
   circleToZero(circle);
 }
 
-#define debugLoop 1
+#define debugLoop 0
 
 void loop() {
   static unsigned long prevLogMillis = 0;
@@ -282,12 +331,23 @@ void loop() {
       Serial.print("DOWN: ");
       Serial.println(digitalRead(DOWN_BTN));
 
-      Serial.print("home1: ");
-      Serial.println(mux.read(0));
-      Serial.print("home2: ");
-      Serial.println(mux.read(1));
-      Serial.print("home3: ");
-      Serial.println(mux.read(2));
+      Serial.print("1: ");
+      Serial.print(digitalRead(ENDSTOP_1));
+      Serial.print(" - ");
+      Serial.println(pcf8574_1.digitalRead(MOTOR1_EN));
+      Serial.print("2: ");
+      Serial.print(digitalRead(ENDSTOP_2));
+      Serial.print(" - ");
+      Serial.println(pcf8574_1.digitalRead(MOTOR2_EN));
+      Serial.print("3: ");
+      Serial.print(digitalRead(ENDSTOP_3));
+      Serial.print(" - ");
+      Serial.println(pcf8574_1.digitalRead(MOTOR3_EN));
+
+      // Serial.print("homed: ");
+      // Serial.println(circle1Homed);
+      // Serial.print("homing?: ");
+      // Serial.println(circle1IsHoming);
     }
   }
   
@@ -302,44 +362,57 @@ void loop() {
   // }
 
   // if (digitalRead(UP_BTN)) {
-  //   allMotorsUp();
+  //   allMotorsUp(circle1);
   // } else if (digitalRead(DOWN_BTN)) {
-  //   allMotorsDown();
+  //   allMotorsDown(circle1);
   // }
 
   // Stop
-  if (digitalRead(UP_BTN) && !stopped) {
-    Serial.println("STOP");
+  if (digitalRead(UP_BTN)) {
+    if (debugLoop) {
+      Serial.println("STOP"); 
+    }
     stopped = true;
     resetCircle(circle1);
   }
 
   // Start
-  if (digitalRead(DOWN_BTN) && stopped) {
-    Serial.println("START");
-    if (circle1Homed && circle2Homed) {
+  if (digitalRead(DOWN_BTN)) {
+    if (debugLoop) {
+      Serial.println("START");
+    }
+    if (circle1Homed) {
+      setSpeedAll(circle1, DEFAULT_SPEED);
       stopped = false;
       runSequence(circle1, true, true);
     } else {
       circle1IsHoming = true;
-      circle2IsHoming = true;
       homeCircle(circle1);
-      homeCircle(circle2);
     }
   }
+  
+  // if (digitalRead(DOWN_BTN) && stopped) {
+  //   Serial.println("START");
+  //   stopped = false;
+  //   runSequence(circle1, true, true);
+  // }
 
   if (circle1IsHoming) {
     if (homeCircle(circle1)) {
       circle1IsHoming = false;
       circle1Homed = true;
+      setSpeedAll(circle1, DEFAULT_SPEED);
+      setAccelAll(circle1, DEFAULT_ACCELERATION);
     }
   }
-  if (circle2IsHoming) {
-    if (homeCircle(circle2)) {
-      circle2IsHoming = false;
-      circle2Homed = true;
-    }
-  }
+  // if (circle2IsHoming) {
+  //   if (homeCircle(circle2)) {
+  //     circle2IsHoming = false;
+  //     circle2Homed = true;
+  //     setSpeedAll(circle2, DEFAULT_SPEED);
+  //     setAccelAll(circle2, DEFAULT_ACCELERATION);
+  //   }
+  // }
 
   // Continue
   if (!stopped) {
@@ -382,15 +455,37 @@ void loop() {
     toggleCircle(circle1, true);
   }
 
+  if (digitalRead(MOTOR0_CTRL)) {
+    if (digitalRead(MOTOR_INVERT)) {
+      stepper1.move(50 * MICSTEP);
+    } else {
+      stepper1.move(-50 * MICSTEP);
+    }
+  }
+  if (digitalRead(MOTOR1_CTRL)) {
+    if (digitalRead(MOTOR_INVERT)) {
+      stepper2.move(50 * MICSTEP);
+    } else {
+      stepper2.move(-50 * MICSTEP);
+    }
+  }
+  if (digitalRead(MOTOR2_CTRL)) {
+    if (digitalRead(MOTOR_INVERT)) {
+      stepper3.move(50 * MICSTEP);
+    } else {
+      stepper3.move(-50 * MICSTEP);
+    }
+  }
+
   if (isCircleEnabled(circle1)) {
     for (auto &motor : circle1) {
       motor->run();
     }
   }
 
-  if (isCircleEnabled(circle2)) {
-    for (auto &motor : circle2) {
-      motor->run();
-    }
-  }
+  // if (isCircleEnabled(circle2)) {
+  //   for (auto &motor : circle2) {
+  //     motor->run();
+  //   }
+  // }
 }
