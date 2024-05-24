@@ -42,6 +42,14 @@
 #define MOTOR_INVERT 23
 
 // Enable pins are in PCF8574 expander pinset
+/*
+  One important caveat is that the PCF8574 pins can't source enough power,
+  but they can sink it.
+  So they need to be wired in reverse of the other inputs of the stepper drivers
+  Example: The P0 pin of the pcf8574 would be connected to EN- of the driver
+  and EN+ would be wired to 3.3v in the mcu. If wired as the step and dir pins
+  (signal pin to STEP+ and DIR+) it would not work.
+*/
 #define MOTOR1_EN P0
 #define MOTOR2_EN P1
 #define MOTOR3_EN P2
