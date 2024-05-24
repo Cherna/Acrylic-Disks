@@ -6,6 +6,7 @@ void circleToZero(std::array<AccelStepper*, 3> circle) {
   }
 }
 
+// Returns true if circle is moving (.isRunning())
 bool isCircleMoving(std::array<AccelStepper*, 3> circle) {
   for (auto &motor : circle) {
     if (motor->isRunning()) {

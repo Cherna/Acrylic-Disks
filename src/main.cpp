@@ -20,9 +20,12 @@
 #define MOTOR6_STEP_PIN 0
 #define MOTOR6_DIR_PIN 5
 
+// Default I2C pins on ESP32s
 #define I2C_SDA_LINE 21
 #define I2C_SCL_LINE 22
 
+// Endstop pins
+// They are very important, so using native pins on the mcu is ideal
 #define ENDSTOP_1 4
 #define ENDSTOP_2 25
 #define ENDSTOP_3 26
@@ -30,6 +33,9 @@
 #define ENDSTOP_5 32
 #define ENDSTOP_6 33
 
+// These pins are not ideal,
+// they should ideally be one of the PCF8574 boards since they are not that imporant
+// They would not be used after the piece is installed, unless maybe for maintenance
 #define MOTOR0_CTRL 27
 #define MOTOR1_CTRL 32
 #define MOTOR2_CTRL 33
@@ -47,16 +53,14 @@
 // Circle1LEDs
 // Circle2LEDs
 // ----
-// 6 motor enable pins
-// ----
 // 6 input endstop pins
-// ----
-// ? Inputs for controls?
+
+#define ENABLE_CONTROLS 0
 
 PCF8574 pcf8574_1(0x20);
 
-#define UP_BTN 34 // Needs external PULLDOWN resistor
-#define DOWN_BTN 35 // Needs external PULLDOWN resistor
+#define START_BTN 34 // Needs external PULLDOWN resistor on ESP32s
+#define STOP_BTN 35 // Needs external PULLDOWN resistor on ESP32s
 
 const int DEFAULT_SPEED = 600;
 const int DEFAULT_ACCELERATION = 1000;
@@ -84,8 +88,8 @@ void setup() {
   Serial.begin(250000);
 
   // Set up buttons
-  pinMode(UP_BTN, INPUT); // Can't be set as PULLDOWN, needs external pulldown resistor
-  pinMode(DOWN_BTN, INPUT); // Can't be set as PULLDOWN, needs external pulldown resistor
+  pinMode(START_BTN, INPUT); // Can't be set as PULLDOWN, needs external pulldown resistor
+  pinMode(STOP_BTN, INPUT); // Can't be set as PULLDOWN, needs external pulldown resistor
 
   // Set up enable pins
   pinMode(ENDSTOP_1, INPUT_PULLDOWN);
@@ -103,9 +107,8 @@ void setup() {
   pcf8574_1.pinMode(MOTOR5_EN, OUTPUT);
   pcf8574_1.pinMode(MOTOR6_EN, OUTPUT);
   
-
   pcf8574_1.begin();
-
+  // Disable all motors by default
   pcf8574_1.digitalWrite(MOTOR1_EN, LOW);
   pcf8574_1.digitalWrite(MOTOR2_EN, LOW);
   pcf8574_1.digitalWrite(MOTOR3_EN, LOW);
@@ -113,10 +116,12 @@ void setup() {
   pcf8574_1.digitalWrite(MOTOR5_EN, LOW);
   pcf8574_1.digitalWrite(MOTOR6_EN, LOW);
 
-  pinMode(MOTOR0_CTRL, INPUT_PULLDOWN);
-  pinMode(MOTOR1_CTRL, INPUT_PULLDOWN);
-  pinMode(MOTOR2_CTRL, INPUT_PULLDOWN);
-  pinMode(MOTOR_INVERT, INPUT_PULLDOWN);
+  if (ENABLE_CONTROLS) {
+    pinMode(MOTOR0_CTRL, INPUT_PULLDOWN);
+    pinMode(MOTOR1_CTRL, INPUT_PULLDOWN);
+    pinMode(MOTOR2_CTRL, INPUT_PULLDOWN);
+    pinMode(MOTOR_INVERT, INPUT_PULLDOWN);
+  }
 
   // Set the maximum speed and acceleration for each stepper motor
   for (auto &motor : allSteppers) {
@@ -132,6 +137,7 @@ static bool stepper4Homed = false;
 static bool stepper5Homed = false;
 static bool stepper6Homed = false;
 
+// Returns true if circle is homed
 bool homeCircle(std::array<AccelStepper*, 3> circle) {
   setSpeedAll(circle, 1000);
   setAccelAll(circle, 1000);
@@ -204,6 +210,8 @@ void toggleCircle(std::array<AccelStepper*, 3> circle, bool enable) {
   }
 }
 
+// Returns true if circle is enabled
+// TODO: Maybe steppers should be enabled separately and not by entire circle
 bool isCircleEnabled(std::array<AccelStepper*, 3> circle) {
   if (circle == circle1) {
     return pcf8574_1.digitalRead(MOTOR1_EN);
@@ -257,7 +265,7 @@ void runSine(
 
 struct sequenceType {
   void (*seqFn)(std::array<AccelStepper*, 3> circle, bool reset);
-  int time;
+  int time; // Sequence duration in milliseconds
 };
 
 sequenceType slowSineSeq = {runSlowSine, 30000};
@@ -266,6 +274,7 @@ sequenceType keepAngle1Seq = {runKeepAngle1, 15000};
 sequenceType keepAngle2Seq = {runKeepAngle2, 15000};
 sequenceType fastSeq = {runFastSequentially, 15000};
 
+// Runs the current sequence selected in order from a list of [sequenceType]s
 bool runSequence(
   std::array<AccelStepper*, 3> circle,
   bool startNext = false,
@@ -311,9 +320,35 @@ void resetCircle(std::array<AccelStepper*, 3> circle) {
   circleToZero(circle);
 }
 
+void runControls() {
+  if (digitalRead(MOTOR0_CTRL)) {
+    if (digitalRead(MOTOR_INVERT)) {
+      stepper1.move(50 * MICSTEP);
+    } else {
+      stepper1.move(-50 * MICSTEP);
+    }
+  }
+  if (digitalRead(MOTOR1_CTRL)) {
+    if (digitalRead(MOTOR_INVERT)) {
+      stepper2.move(50 * MICSTEP);
+    } else {
+      stepper2.move(-50 * MICSTEP);
+    }
+  }
+  if (digitalRead(MOTOR2_CTRL)) {
+    if (digitalRead(MOTOR_INVERT)) {
+      stepper3.move(50 * MICSTEP);
+    } else {
+      stepper3.move(-50 * MICSTEP);
+    }
+  }
+}
+
 #define debugLoop 0
 
 void loop() {
+  // TODO: Maybe some of these flags should be moved to outside of the loop()
+  // instead of being defined as static
   static unsigned long prevLogMillis = 0;
   static unsigned long prevPosMillis = 0;
   static bool stopped = true;
@@ -327,9 +362,9 @@ void loop() {
     if (millis() - prevLogMillis >= 200) {
       prevLogMillis = millis();
       Serial.print("UP: ");
-      Serial.println(digitalRead(UP_BTN));
+      Serial.println(digitalRead(START_BTN));
       Serial.print("DOWN: ");
-      Serial.println(digitalRead(DOWN_BTN));
+      Serial.println(digitalRead(STOP_BTN));
 
       Serial.print("1: ");
       Serial.print(digitalRead(ENDSTOP_1));
@@ -361,14 +396,18 @@ void loop() {
   //   Serial.println(stepper3.currentPosition());
   // }
 
-  // if (digitalRead(UP_BTN)) {
+  // if (digitalRead(START_BTN)) {
   //   allMotorsUp(circle1);
-  // } else if (digitalRead(DOWN_BTN)) {
+  // } else if (digitalRead(STOP_BTN)) {
   //   allMotorsDown(circle1);
   // }
 
+  if (ENABLE_CONTROLS) {
+    runControls();
+  }
+
   // Stop
-  if (digitalRead(UP_BTN)) {
+  if (digitalRead(STOP_BTN)) {
     if (debugLoop) {
       Serial.println("STOP"); 
     }
@@ -377,7 +416,7 @@ void loop() {
   }
 
   // Start
-  if (digitalRead(DOWN_BTN)) {
+  if (digitalRead(START_BTN)) {
     if (debugLoop) {
       Serial.println("START");
     }
@@ -390,12 +429,6 @@ void loop() {
       homeCircle(circle1);
     }
   }
-  
-  // if (digitalRead(DOWN_BTN) && stopped) {
-  //   Serial.println("START");
-  //   stopped = false;
-  //   runSequence(circle1, true, true);
-  // }
 
   if (circle1IsHoming) {
     if (homeCircle(circle1)) {
@@ -405,14 +438,14 @@ void loop() {
       setAccelAll(circle1, DEFAULT_ACCELERATION);
     }
   }
-  // if (circle2IsHoming) {
-  //   if (homeCircle(circle2)) {
-  //     circle2IsHoming = false;
-  //     circle2Homed = true;
-  //     setSpeedAll(circle2, DEFAULT_SPEED);
-  //     setAccelAll(circle2, DEFAULT_ACCELERATION);
-  //   }
-  // }
+  if (circle2IsHoming) {
+    if (homeCircle(circle2)) {
+      circle2IsHoming = false;
+      circle2Homed = true;
+      setSpeedAll(circle2, DEFAULT_SPEED);
+      setAccelAll(circle2, DEFAULT_ACCELERATION);
+    }
+  }
 
   // Continue
   if (!stopped) {
@@ -455,37 +488,15 @@ void loop() {
     toggleCircle(circle1, true);
   }
 
-  if (digitalRead(MOTOR0_CTRL)) {
-    if (digitalRead(MOTOR_INVERT)) {
-      stepper1.move(50 * MICSTEP);
-    } else {
-      stepper1.move(-50 * MICSTEP);
-    }
-  }
-  if (digitalRead(MOTOR1_CTRL)) {
-    if (digitalRead(MOTOR_INVERT)) {
-      stepper2.move(50 * MICSTEP);
-    } else {
-      stepper2.move(-50 * MICSTEP);
-    }
-  }
-  if (digitalRead(MOTOR2_CTRL)) {
-    if (digitalRead(MOTOR_INVERT)) {
-      stepper3.move(50 * MICSTEP);
-    } else {
-      stepper3.move(-50 * MICSTEP);
-    }
-  }
-
   if (isCircleEnabled(circle1)) {
     for (auto &motor : circle1) {
       motor->run();
     }
   }
 
-  // if (isCircleEnabled(circle2)) {
-  //   for (auto &motor : circle2) {
-  //     motor->run();
-  //   }
-  // }
+  if (isCircleEnabled(circle2)) {
+    for (auto &motor : circle2) {
+      motor->run();
+    }
+  }
 }
