@@ -60,8 +60,6 @@
 // Missing pins
 // Circle1LEDs
 // Circle2LEDs
-// ----
-// 6 input endstop pins
 
 #define ENABLE_CONTROLS 0
 
